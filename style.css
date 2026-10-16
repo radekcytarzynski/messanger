@@ -1,0 +1,131 @@
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --text: #1c1e21;
+  --muted: #6b7280;
+  --border: #e3e5e8;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --danger: #dc2626;
+  --ok: #16a34a;
+  --new: #eef4ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121316;
+    --card: #1c1e22;
+    --text: #e6e7ea;
+    --muted: #9ca3af;
+    --border: #2c2f35;
+    --accent: #3b82f6;
+    --danger: #f87171;
+    --ok: #4ade80;
+    --new: #1d2a44;
+  }
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: light dark; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); }
+h1 { font-size: 1.25rem; margin: 0; }
+h2 { font-size: 1rem; margin: 1.5rem 0 .25rem; }
+.muted { color: var(--muted); }
+.spacer { flex: 1; }
+[hidden] { display: none !important; }
+
+button, .ghost {
+  font: inherit;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: .45rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+}
+button:disabled { opacity: .6; cursor: default; }
+.ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+  padding: .25rem .65rem;
+  font-size: .85rem;
+}
+.ghost:hover { border-color: var(--muted); }
+.ghost.danger { color: var(--danger); }
+
+input, textarea, select {
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .5rem .65rem;
+}
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* Logowanie i konta */
+body.narrow { display: flex; justify-content: center; padding: 10vh 16px 2rem; }
+.card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+.stack { display: flex; flex-direction: column; gap: .75rem; margin-top: 1rem; }
+.stack label { display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; }
+.error { color: var(--danger); }
+.notice { color: var(--ok); }
+.users { list-style: none; padding: 0; margin: 1rem 0 0; }
+.users li { display: flex; align-items: center; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid var(--border); }
+form.inline { margin: 0; }
+
+/* Aplikacja */
+.top {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1rem 16px .5rem;
+}
+.status { font-size: .8rem; color: var(--muted); }
+.status::before { content: "●"; margin-right: .3rem; color: var(--danger); }
+.status.ok::before { color: var(--ok); }
+
+.app { max-width: 760px; margin: 0 auto; padding: 0 16px 3rem; }
+.compose {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: .75rem;
+}
+.compose textarea { width: 100%; resize: vertical; border: none; padding: .25rem; min-height: 4.5rem; }
+.compose textarea:focus { outline: none; }
+.compose .row { display: flex; align-items: center; gap: .75rem; margin-top: .5rem; flex-wrap: wrap; }
+.compose select { padding: .25rem .4rem; margin-left: .25rem; }
+.error-inline { flex: 1; color: var(--danger); font-size: .85rem; }
+
+.empty { color: var(--muted); text-align: center; margin: 2.5rem 0; }
+.list { list-style: none; padding: 0; margin: 1rem 0 0; display: flex; flex-direction: column; gap: .6rem; }
+.msg {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: .75rem .9rem .5rem;
+  transition: opacity .3s;
+}
+.msg.new { animation: flash 2.5s ease-out; }
+@keyframes flash { from { background: var(--new); border-color: var(--accent); } }
+.msg.soon { opacity: .6; }
+.msg .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg .meta { display: flex; align-items: center; gap: .6rem; margin-top: .4rem; font-size: .8rem; color: var(--muted); flex-wrap: wrap; }
+.msg .left { font-variant-numeric: tabular-nums; }
