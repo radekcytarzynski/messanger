@@ -2,6 +2,8 @@
 // JSON API dla app.js:
 //   GET  api.php?action=list
 //   POST api.php?action=send    {text, ttl}
+//   POST api.php?action=send_image&ttl=5   (treść żądania = surowy plik obrazu)
+//   GET  api.php?action=image&id=N
 //   POST api.php?action=delete  {id}
 //   POST api.php?action=logout
 require __DIR__ . '/lib.php';
@@ -32,6 +34,32 @@ try {
     }
 
     purge_expired();
+
+    if ($action === 'image' && $method === 'GET') {
+        $id = (int)($_GET['id'] ?? 0);
+        $img = get_image($user['id'], $id);
+        if (!$img) {
+            out(404, ['error' => 'Obraz wygasł albo został usunięty.']);
+        }
+        $ext = array_key_exists($img['mime'], IMAGE_TYPES) ? IMAGE_TYPES[$img['mime']] : 'bin';
+        header('Content-Type: ' . $img['mime']);
+        header('Content-Length: ' . strlen($img['data']));
+        header('Content-Disposition: inline; filename="obraz-' . $id . '.' . $ext . '"');
+        echo $img['data'];
+        exit;
+    }
+
+    if ($action === 'send_image' && $method === 'POST') {
+        $ttl = (int)($_GET['ttl'] ?? 0);
+        if (!in_array($ttl, cfg('ttl_options'), true)) {
+            $ttl = cfg('default_ttl');
+        }
+        $err = add_image_message($user['id'], (string)file_get_contents('php://input'), $ttl);
+        if ($err !== null) {
+            out(400, ['error' => $err]);
+        }
+        out(201, ['ok' => true]);
+    }
 
     $body = [];
     if ($method === 'POST') {

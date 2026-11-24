@@ -12,6 +12,9 @@ const COOKIE_NAME = 'msgr_session';
 const MAX_TEXT = 20000;      // znaków w jednej wiadomości
 const MAX_MESSAGES = 200;    // na konto; starsze są usuwane
 const LOGIN_LIMIT = 10;      // nieudanych prób na 15 minut z jednego IP
+const MAX_IMAGE = 8388608;   // 8 MB na jeden obraz (mniej, jeśli serwer ma niższe limity)
+const MAX_IMAGE_TOTAL = 67108864; // 64 MB obrazów na konto; starsze są usuwane
+const IMAGE_TYPES = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif', 'image/webp' => 'webp'];
 
 function cfg($key)
 {
@@ -39,7 +42,7 @@ function page_start($title, $bodyClass = '')
 <meta name="robots" content="noindex, nofollow">
 <title><?= h($title) ?></title>
 <link rel="icon" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body class="<?= h($bodyClass) ?>">
 <?php
@@ -48,7 +51,7 @@ function page_start($title, $bodyClass = '')
 function page_end($script = '')
 {
     if ($script !== '') {
-        echo '<script src="' . h($script) . '?v=1"></script>' . "\n";
+        echo '<script src="' . h($script) . '?v=2"></script>' . "\n";
     }
     echo "</body>\n</html>\n";
 }
@@ -93,6 +96,14 @@ function ensure_schema()
         INDEX (user_id),
         INDEX (expires)
     ) ' . $opts);
+    $db->exec('CREATE TABLE IF NOT EXISTS ' . t('images') . ' (
+        message_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        mime VARCHAR(32) NOT NULL,
+        width INT UNSIGNED NOT NULL,
+        height INT UNSIGNED NOT NULL,
+        size INT UNSIGNED NOT NULL,
+        data MEDIUMBLOB NOT NULL
+    ) ' . $opts);
     $db->exec('CREATE TABLE IF NOT EXISTS ' . t('login_attempts') . ' (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         ip VARCHAR(45) NOT NULL,
@@ -103,7 +114,7 @@ function ensure_schema()
 
 function send_security_headers()
 {
-    header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
+    header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY');
     // Klikane linki nie zdradzają adresu messengera.
@@ -237,12 +248,16 @@ function attempt_login($username, $password)
 function purge_expired()
 {
     db()->prepare('DELETE FROM ' . t('messages') . ' WHERE expires <= ?')->execute([time()]);
+    // Obrazy, których wiadomość już nie istnieje (wygasła, usunięta, konto skasowane).
+    db()->exec('DELETE i FROM ' . t('images') . ' i LEFT JOIN ' . t('messages') . ' m ON m.id = i.message_id WHERE m.id IS NULL');
 }
 
 function list_messages($userId)
 {
-    $st = db()->prepare('SELECT id, body, created, expires FROM ' . t('messages') . '
-        WHERE user_id = ? AND expires > ? ORDER BY id');
+    $st = db()->prepare('SELECT m.id, m.body, m.created, m.expires, i.mime, i.width, i.height, i.size
+        FROM ' . t('messages') . ' m
+        LEFT JOIN ' . t('images') . ' i ON i.message_id = m.id
+        WHERE m.user_id = ? AND m.expires > ? ORDER BY m.id');
     $st->execute([$userId, time()]);
     $out = [];
     foreach ($st->fetchAll() as $r) {
@@ -251,18 +266,29 @@ function list_messages($userId)
             'text' => $r['body'],
             'created' => (int)$r['created'],
             'expires' => (int)$r['expires'],
+            'image' => $r['mime'] === null ? null : [
+                'type' => $r['mime'],
+                'w' => (int)$r['width'],
+                'h' => (int)$r['height'],
+                'size' => (int)$r['size'],
+            ],
         ];
     }
     return $out;
 }
 
-function add_message($userId, $text, $ttlMinutes)
+function insert_message($userId, $text, $ttlMinutes)
 {
     $now = time();
-    $db = db();
-    $db->prepare('INSERT INTO ' . t('messages') . ' (user_id, body, created, expires) VALUES (?, ?, ?, ?)')
+    db()->prepare('INSERT INTO ' . t('messages') . ' (user_id, body, created, expires) VALUES (?, ?, ?, ?)')
         ->execute([$userId, $text, $now, $now + $ttlMinutes * 60]);
-    // Limit liczby wiadomości na konto.
+    return (int)db()->lastInsertId();
+}
+
+// Limit liczby wiadomości na konto.
+function trim_messages($userId)
+{
+    $db = db();
     $st = $db->prepare('SELECT id FROM ' . t('messages') . ' WHERE user_id = ? ORDER BY id DESC LIMIT 1 OFFSET ' . MAX_MESSAGES);
     $st->execute([$userId]);
     $cut = $st->fetchColumn();
@@ -271,7 +297,105 @@ function add_message($userId, $text, $ttlMinutes)
     }
 }
 
+function add_message($userId, $text, $ttlMinutes)
+{
+    insert_message($userId, $text, $ttlMinutes);
+    trim_messages($userId);
+}
+
+// "8M" -> 8388608
+function ini_bytes($v)
+{
+    $v = trim((string)$v);
+    $n = (float)$v;
+    switch (strtolower(substr($v, -1))) {
+        case 'g': $n *= 1024; // no break
+        case 'm': $n *= 1024; // no break
+        case 'k': $n *= 1024;
+    }
+    return (int)$n;
+}
+
+// Największy obraz, jaki przyjmie serwer: MAX_IMAGE, post_max_size PHP i max_allowed_packet MySQL.
+function image_limit()
+{
+    static $limit = null;
+    if ($limit !== null) {
+        return $limit;
+    }
+    $limit = MAX_IMAGE;
+    $post = ini_bytes(ini_get('post_max_size'));
+    if ($post > 0) {
+        $limit = min($limit, $post - 1024);
+    }
+    try {
+        $packet = (int)db()->query('SELECT @@max_allowed_packet')->fetchColumn();
+        if ($packet > 0) {
+            $limit = min($limit, $packet - 65536);
+        }
+    } catch (PDOException $e) {
+    }
+    $limit = max(0, $limit);
+    return $limit;
+}
+
+// Zwraca null albo komunikat błędu.
+function add_image_message($userId, $data, $ttlMinutes)
+{
+    if ($data === '') {
+        return 'Pusty obraz (może przekracza limit serwera).';
+    }
+    if (strlen($data) > image_limit()) {
+        return 'Obraz jest za duży (max ' . round(image_limit() / 1048576, 1) . ' MB).';
+    }
+    $info = @getimagesizefromstring($data);
+    if (!$info || !array_key_exists($info['mime'], IMAGE_TYPES)) {
+        return 'Obsługiwane formaty: PNG, JPEG, GIF, WebP.';
+    }
+    $db = db();
+    $db->beginTransaction();
+    try {
+        $id = insert_message($userId, '', $ttlMinutes);
+        $db->prepare('INSERT INTO ' . t('images') . ' (message_id, mime, width, height, size, data) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$id, $info['mime'], (int)$info[0], (int)$info[1], strlen($data), $data]);
+        $db->commit();
+    } catch (PDOException $e) {
+        $db->rollBack();
+        throw $e;
+    }
+    trim_messages($userId);
+    trim_images($userId);
+    return null;
+}
+
+// Limit łącznego rozmiaru obrazów na konto: najstarsze wiadomości z obrazami są usuwane.
+function trim_images($userId)
+{
+    $st = db()->prepare('SELECT m.id, i.size FROM ' . t('messages') . ' m
+        JOIN ' . t('images') . ' i ON i.message_id = m.id
+        WHERE m.user_id = ? ORDER BY m.id DESC');
+    $st->execute([$userId]);
+    $total = 0;
+    foreach ($st->fetchAll() as $r) {
+        $total += (int)$r['size'];
+        if ($total > MAX_IMAGE_TOTAL) {
+            delete_message($userId, (int)$r['id']);
+        }
+    }
+}
+
+function get_image($userId, $id)
+{
+    $st = db()->prepare('SELECT i.mime, i.data FROM ' . t('images') . ' i
+        JOIN ' . t('messages') . ' m ON m.id = i.message_id
+        WHERE m.user_id = ? AND m.id = ? AND m.expires > ?');
+    $st->execute([$userId, $id, time()]);
+    return $st->fetch() ?: null;
+}
+
 function delete_message($userId, $id)
 {
+    db()->prepare('DELETE i FROM ' . t('images') . ' i JOIN ' . t('messages') . ' m ON m.id = i.message_id
+        WHERE m.user_id = ? AND m.id = ?')->execute([$userId, $id]);
     db()->prepare('DELETE FROM ' . t('messages') . ' WHERE user_id = ? AND id = ?')->execute([$userId, $id]);
 }

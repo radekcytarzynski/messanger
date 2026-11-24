@@ -33,6 +33,19 @@ Kliknij swój login w prawym górnym rogu (strona `setup.php`). Możesz tam:
 - **Enter** wysyła wiadomość, **Shift+Enter** wstawia nową linię.
 - **Ctrl+V** w dowolnym miejscu strony wkleja tekst do pola wiadomości.
 - Przycisk **Kopiuj** kopiuje wiadomość do schowka. Linki da się kliknąć.
+
+### Obrazy
+
+- **Ctrl+V** ze zrzutem ekranu lub skopiowanym obrazkiem, przycisk **Obraz** (plik / galeria w telefonie) albo przeciągnięcie pliku na stronę dodaje obraz. Pojawia się podgląd, a **Enter** go wysyła.
+  Jeśli w schowku jest też tekst (np. komórki z Excela), wklei się tekst.
+- Przy obrazie: **Kopiuj** wstawia go do schowka jako PNG (np. żeby wkleić w innym komunikatorze),
+  **Udostępnij** otwiera systemowe menu udostępniania w telefonie (WhatsApp, Messenger, Signal…),
+  **Pobierz** zapisuje plik.
+- Kopiowanie obrazu do schowka działa tylko przez **HTTPS**. Jeśli przeglądarka go nie obsługuje, użyj „Udostępnij”.
+- Formaty: PNG, JPEG, GIF, WebP. Inne (np. BMP, HEIC) oraz zbyt duże pliki przeglądarka przed wysłaniem sama przerabia na PNG/JPEG.
+- Limit jednego obrazu to 8 MB (`MAX_IMAGE` w `lib.php`). Jest automatycznie obniżany do ustawień serwera: `post_max_size` w PHP i `max_allowed_packet` w MySQL.
+  Na konto przypada łącznie do 64 MB obrazów (`MAX_IMAGE_TOTAL`). Po przekroczeniu najstarsze są usuwane.
+- Obrazy leżą w tabeli `msgr_images` i znikają razem ze swoją wiadomością. Tabela tworzy się sama przy wejściu na stronę.
 - Gdy karta jest w tle, liczba nowych wiadomości pokazuje się w tytule karty.
 
 ## Jak działa kasowanie
