@@ -59,10 +59,16 @@ page_start('Messenger');
   <button id="logout" class="ghost" type="button">Wyloguj</button>
 </header>
 <main class="app">
-  <form id="compose" class="compose">
+  <form id="compose" class="compose" data-image-limit="<?= (int)image_limit() ?>">
     <textarea id="text" rows="3" maxlength="<?= MAX_TEXT ?>" autofocus
-      placeholder="Wklej link lub wpisz wiadomość…  Enter: wyślij · Shift+Enter: nowa linia"></textarea>
+      placeholder="Wklej link, tekst lub obraz…  Enter: wyślij · Shift+Enter: nowa linia"></textarea>
+    <div id="preview" class="preview" hidden>
+      <img id="preview-img" alt="Obraz do wysłania">
+      <span id="preview-info" class="muted"></span>
+      <button id="preview-remove" type="button" class="ghost danger">Usuń obraz</button>
+    </div>
     <div class="row">
+      <label class="ghost attach" title="Wybierz obraz z dysku lub galerii">Obraz<input id="file" type="file" accept="image/*" hidden></label>
       <label class="muted">Zniknie po
         <select id="ttl">
         <?php foreach (cfg('ttl_options') as $m): ?>
